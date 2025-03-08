@@ -1,0 +1,235 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+import numpy as np
+
+#Task One: Botany and Plant Science
+# Define the path to the uploaded TXT file
+data_source = "https://raw.githubusercontent.com/HackBio-Internship/2025_project_collection/refs/heads/main/Python/Dataset/Pesticide_treatment_data.txt"
+
+# Load the dataset into a Pandas DataFrame
+df = pd.read_csv(data_source, sep="\t")
+df.rename(columns={"Unnamed: 0": "Sample"}, inplace=True)
+
+# Display basic info about the dataset
+df.info(), df.head()
+
+# Step 2: Compute ΔM (Difference in Metabolic Response)
+wt_dmso = df[df["Sample"] == "WT_DMSO_1"].iloc[:, 1:].values.flatten()
+wt_24h = df[df["Sample"] == "WT_pesticide_24h_1"].iloc[:, 1:].values.flatten()
+mutant_dmso = df[df["Sample"] == "mutant_DMSO_1"].iloc[:, 1:].values.flatten()
+mutant_24h = df[df["Sample"] == "mutant_pesticide_24h_1"].iloc[:, 1:].values.flatten()
+
+delta_m_df = pd.DataFrame({
+    "Metabolite": df.columns[1:],
+    "ΔM_WT": wt_24h - wt_dmso,
+    "ΔM_Mutant": mutant_24h - mutant_dmso
+})
+
+# Step 3: Scatter Plot for ΔM_WT vs. ΔM_Mutant
+plt.figure(figsize=(8, 6))
+sns.scatterplot(data=delta_m_df, x="ΔM_WT", y="ΔM_Mutant", color="blue", alpha=0.7)
+plt.plot(np.linspace(delta_m_df["ΔM_WT"].min(), delta_m_df["ΔM_WT"].max(), 100), 
+         np.linspace(delta_m_df["ΔM_WT"].min(), delta_m_df["ΔM_WT"].max(), 100),
+         color="red", linestyle="--", label="y = x")
+plt.xlabel("ΔM (WT)")
+plt.ylabel("ΔM (Mutant)")
+plt.title("Scatter Plot of ΔM for WT vs. Mutants")
+plt.legend()
+plt.grid()
+plt.show()
+
+# Step 4: Compute Residuals & Categorize Metabolites
+residual_cutoff = 0.3
+delta_m_df["Residual"] = delta_m_df["ΔM_Mutant"] - delta_m_df["ΔM_WT"]
+delta_m_df["Color"] = np.where(
+    (delta_m_df["Residual"] >= -residual_cutoff) & (delta_m_df["Residual"] <= residual_cutoff),
+    "grey", "salmon")
+
+# Step 5: Scatter Plot with Residual-Based Coloring
+plt.figure(figsize=(8, 6))
+sns.scatterplot(data=delta_m_df, x="ΔM_WT", y="ΔM_Mutant", hue="Color", palette={"grey": "grey", "salmon": "salmon"}, alpha=0.7)
+plt.plot(np.linspace(delta_m_df["ΔM_WT"].min(), delta_m_df["ΔM_WT"].max(), 100), 
+         np.linspace(delta_m_df["ΔM_WT"].min(), delta_m_df["ΔM_WT"].max(), 100),
+         color="red", linestyle="--", label="y = x")
+plt.xlabel("ΔM (WT)")
+plt.ylabel("ΔM (Mutant)")
+plt.title("Scatter Plot of ΔM for WT vs. Mutants (Colored by Residuals)")
+plt.legend()
+plt.grid()
+plt.show()
+
+# Step 6: Identify Outlier Metabolites
+outlier_metabolites = delta_m_df[delta_m_df["Color"] == "salmon"]
+selected_metabolites = outlier_metabolites["Metabolite"].head(6).tolist()
+
+# Step 7: Extract Data for Selected Metabolites
+selected_data = df[df["Sample"].str.contains("WT|mutant")][["Sample"] + selected_metabolites]
+time_mapping = {
+    "WT_DMSO_1": "0h_WT", "WT_pesticide_0_1": "0h_WT",
+    "WT_pesticide_8h_1": "8h_WT", "WT_pesticide_24h_1": "24h_WT",
+    "mutant_DMSO_1": "0h_Mutant", "mutant_pesticide_0_1": "0h_Mutant",
+    "mutant_pesticide_8h_1": "8h_Mutant", "mutant_pesticide_24h_1": "24h_Mutant"
+}
+selected_data["Time"] = selected_data["Sample"].map(time_mapping)
+selected_data = selected_data.drop(columns=["Sample"], errors="ignore")
+
+# Step 8: Generate Line Plots for Selected Metabolites
+data_melted = selected_data.melt(id_vars=["Time"], var_name="Metabolite", value_name="Response")
+plt.figure(figsize=(10, 6))
+sns.lineplot(data=data_melted, x="Time", y="Response", hue="Metabolite", marker="o")
+plt.xlabel("Time Point")
+plt.ylabel("Metabolic Response")
+plt.title("Metabolic Response Over Time for Selected Outlier Metabolites")
+plt.xticks(rotation=45)
+plt.legend(title="Metabolite")
+plt.show()
+
+#Observations of TAsk 1: Some metabolites show consistent trends across WT and Mutants.
+#Others exhibit divergent behavior, likely indicating different metabolic responses due to pesticide treatment.
+#Further analysis could explore whether these metabolites contribute to pesticide resistance.
+
+#Task 2: Transcriptomics
+
+# Load the dataset
+file_path = "https://gist.githubusercontent.com/stephenturner/806e31fce55a8b7175af/raw/1a507c4c3f9f1baaa3a69187223ff3d3050628d4/results.txt"
+df = pd.read_csv(file_path, sep="\s+", engine="python")
+
+# Compute -log10(p-value) for volcano plot
+df["-log10(pvalue)"] = -np.log10(df["pvalue"])
+
+# Define color categories
+df["Color"] = "grey"  # Default: non-significant
+df.loc[(df["log2FoldChange"] > 1) & (df["pvalue"] < 0.01), "Color"] = "red"  # Upregulated
+df.loc[(df["log2FoldChange"] < -1) & (df["pvalue"] < 0.01), "Color"] = "blue"  # Downregulated
+
+# Create the volcano plot
+plt.figure(figsize=(8, 6))
+sns.scatterplot(data=df, x="log2FoldChange", y="-log10(pvalue)", hue="Color", palette={"red": "red", "blue": "blue", "grey": "grey"}, alpha=0.6)
+
+# Highlight Threshold Lines
+plt.axhline(y=-np.log10(0.01), linestyle="--", color="black", linewidth=1)  # p-value cutoff
+plt.axvline(x=1, linestyle="--", color="black", linewidth=1)  # Log2FC cutoff (up)
+plt.axvline(x=-1, linestyle="--", color="black", linewidth=1)  # Log2FC cutoff (down)
+
+# Labels and title
+plt.xlabel("log2(Fold Change)")
+plt.ylabel("-log10(p-value)")
+plt.title("Volcano Plot of Differential Gene Expression")
+plt.legend(title="Regulation", loc="upper right")
+
+# Show plot
+plt.show()
+
+# Extract Upregulated & Downregulated Genes
+upregulated_genes = df[(df["log2FoldChange"] > 1) & (df["pvalue"] < 0.01)]
+downregulated_genes = df[(df["log2FoldChange"] < -1) & (df["pvalue"] < 0.01)]
+
+# Select Top 5 from Each Group (Sorted by p-value for significance)
+top_5_upregulated = upregulated_genes.nsmallest(5, "pvalue")
+top_5_downregulated = downregulated_genes.nsmallest(5, "pvalue")
+
+# Display the top 5 upregulated and downregulated genes
+print("Top 5 Upregulated Genes:")
+print(top_5_upregulated[["Gene", "log2FoldChange", "pvalue"]])
+
+print("\nTop 5 Downregulated Genes:")
+print(top_5_downregulated[["Gene", "log2FoldChange", "pvalue"]])
+
+#Top 5 Upregulated Genes and Their Functions:
+#EMILIN2: Encodes a protein involved in the extracellular matrix, playing a role in cell adhesion and elastic fiber assembly.
+
+#POU3F4: A transcription factor critical for the development of the inner ear and certain neural tissues. Mutations are associated with hearing loss.
+
+#LOC285954: This gene's function is not well-characterized.
+
+#VEPH1: Encodes a protein that may be involved in neuronal development and signal transduction.
+
+#DTHD1: This gene's function is not well-characterized.
+
+#Top 5 Downregulated Genes and Their Functions:
+#TBX5: A transcription factor essential for heart and limb development. Mutations can lead to Holt-Oram syndrome, affecting the heart and upper limbs.
+
+#LAMA2: Encodes laminin subunit alpha-2, a component of the basal lamina. Mutations are linked to congenital muscular dystrophy.
+
+#CAV2: Encodes caveolin-2, involved in the formation of caveolae (small invaginations) on the cell membrane and associated with signal transduction.
+
+#IFITM1: Interferon-induced transmembrane protein that plays a role in antiviral defense by inhibiting viral entry into host cells.
+
+#TNN: Encodes tenascin N, an extracellular matrix protein involved in neural development and regeneration.
+
+#Task 3: Microbiology
+
+from scipy.stats import ttest_ind
+
+# Load the dataset
+mcb_path = "https://raw.githubusercontent.com/HackBio-Internship/2025_project_collection/refs/heads/main/Python/Dataset/mcgc.tsv"
+df = pd.read_csv(mcb_path, sep="\t")
+
+# Define strain groups
+strain_groups = {
+    "Strain1": {"WT": ["A1", "A3", "B1", "B3", "C1", "C3"], "MUT": ["A2", "A4", "B2", "B4", "C2", "C4"]},
+    "Strain2": {"WT": ["A5", "A7", "B5", "B7", "C5", "C7"], "MUT": ["A6", "A8", "B6", "B8", "C6", "C8"]},
+    "Strain3": {"WT": ["A9", "A11", "B9", "B11", "C9", "C11"], "MUT": ["A10", "A12", "B10", "B12", "C10", "C12"]}
+}
+
+# Plot growth curves
+for strain, conditions in strain_groups.items():
+    plt.figure(figsize=(6, 4))
+    for col in conditions["WT"]:
+        plt.plot(df["time"], df[col], color="blue", alpha=0.5, label="WT" if col == conditions["WT"][0] else "")
+    for col in conditions["MUT"]:
+        plt.plot(df["time"], df[col], color="red", alpha=0.5, label="MUT" if col == conditions["MUT"][0] else "")
+    plt.xlabel("Time (minutes)")
+    plt.ylabel("OD600")
+    plt.title(f"Growth Curves for {strain} (WT vs. MUT)")
+    plt.legend()
+    plt.grid()
+    plt.show()
+
+# Function to calculate carrying capacity time
+def carrying_capacity_time(time_series, od_series):
+    max_od = od_series.max()
+    carrying_capacity = 0.8 * max_od
+    carrying_time = time_series[od_series >= carrying_capacity].min()
+    return carrying_time
+
+# Compute carrying capacity times
+carrying_times = []
+for strain, conditions in strain_groups.items():
+    for condition, replicates in conditions.items():
+        for col in replicates:
+            time_to_capacity = carrying_capacity_time(df["time"], df[col])
+            carrying_times.append({"Strain": strain, "Condition": condition, "Replicate": col, "TimeToCapacity": time_to_capacity})
+
+carrying_df = pd.DataFrame(carrying_times)
+
+# Scatter plot
+plt.figure(figsize=(8, 6))
+sns.scatterplot(data=carrying_df, x="Condition", y="TimeToCapacity", hue="Strain", style="Condition", s=100)
+plt.xlabel("Condition (WT vs. MUT)")
+plt.ylabel("Time to Carrying Capacity (minutes)")
+plt.title("Scatter Plot of Carrying Capacity Time (WT vs. MUT)")
+plt.legend(title="Strain")
+plt.grid()
+plt.show()
+
+# Box plot
+plt.figure(figsize=(8, 6))
+sns.boxplot(data=carrying_df, x="Condition", y="TimeToCapacity", palette={"WT": "blue", "MUT": "red"})
+plt.xlabel("Condition (WT vs. MUT)")
+plt.ylabel("Time to Carrying Capacity (minutes)")
+plt.title("Box Plot of Carrying Capacity Time (WT vs. MUT)")
+plt.grid()
+plt.show()
+
+# Statistical test
+wt_times = carrying_df[carrying_df["Condition"] == "WT"]["TimeToCapacity"]
+mut_times = carrying_df[carrying_df["Condition"] == "MUT"]["TimeToCapacity"]
+t_stat, p_value = ttest_ind(wt_times, mut_times, equal_var=False)
+print(f"T-test Statistic: {t_stat:.3f}")
+print(f"P-value: {p_value:.5f}")
+if p_value < 0.05:
+    print("The difference in carrying capacity times between WT and MUT is statistically significant.")
+else:
+    print("No significant difference in carrying capacity times between WT and MUT.")
